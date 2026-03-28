@@ -1,10 +1,13 @@
 require('dotenv').config();
 const express    = require('express');
+const app = express();
 const cors       = require('cors');
 const axios      = require('axios');
 const NodeCache  = require('node-cache');
 const rateLimit  = require('express-rate-limit');
-
+app.get('/ping', (req, res) => {
+  res.status(200).send('ok');
+});
 /* ─────────────────────────────────────────────────────────────
    CONFIG
    ───────────────────────────────────────────────────────────── */
