@@ -15,15 +15,12 @@ const TTL     = {
 
 const cache = new NodeCache({ stdTTL: 300, checkperiod: 60 });
 
-// Simula un browser para evitar el 403 de CAFCI
 const http = axios.create({
   timeout: 15000,
   headers: {
     'Accept':          'application/json, text/plain, */*',
     'Accept-Language': 'es-AR,es;q=0.9',
     'User-Agent':      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-    'Referer':         'https://www.cafci.org.ar/',
-    'Origin':          'https://www.cafci.org.ar',
   },
 });
 
@@ -59,67 +56,69 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', uptime: Math.floor(process.uptime()), ts: new Date().toISOString() });
 });
 
-// BILLETERAS: usa endpoint /pb (valor cuotaparte) y calcula TNA = (hoy/ayer - 1) * 365 * 100
+/* ── BILLETERAS ─────────────────────────────────────────────────────────
+ * CAFCI tiene un endpoint público de estadísticas diarias:
+ * GET /estadisticas/informacion/diaria/{fecha_inicio}/{fecha_fin}
+ * Devuelve: { data: [{ fondo, horizonte, fecha, vcp, ccp, patrimonio }] }
+ * vcp = valor cuotaparte de hoy
+ * Calculamos TNA comparando vcp de hoy vs ayer del mismo fondo
+ * ─────────────────────────────────────────────────────────────────────── */
 app.get('/api/billeteras', async (_req, res) => {
   const KEY = 'billeteras';
   const hit = cache.get(KEY);
   if (hit) return res.json({ source: 'cache', data: hit });
 
   try {
-    const { data: fondosResp } = await http.get('https://api.cafci.org.ar/fondo', {
-      params: { estado: 1, _include: 'gerente,clase', limit: 100 },
-    });
+    const hoy   = today();
+    const ayer  = daysAgo(2); // 2 días por si hoy no tiene datos aún
 
-    const fondos = (fondosResp.data || []).filter(f =>
-      f.clase?.tipoRentaId === 1 ||
-      (f.clase?.nombre || '').toLowerCase().includes('liquidez') ||
-      (f.clase?.nombre || '').toLowerCase().includes('money')
-    ).slice(0, 25);
+    const url = `https://api.cafci.org.ar/estadisticas/informacion/diaria/${ayer}/${hoy}`;
+    const { data: resp } = await http.get(url);
 
-    if (!fondos.length) throw new Error('Sin fondos MM');
+    const registros = resp.data || [];
+    if (!registros.length) throw new Error('Sin datos de CAFCI estadísticas');
 
-    const resultados = await Promise.allSettled(
-      fondos.map(async f => {
-        const claseId = f.clase?.id || f.claseId;
-        if (!claseId) return null;
+    // Agrupar por fondo y horizonte, ordenar por fecha desc
+    const porFondo = {};
+    for (const r of registros) {
+      const key = `${r.fondo}_${r.horizonte}`;
+      if (!porFondo[key]) porFondo[key] = [];
+      porFondo[key].push(r);
+    }
 
-        const { data: pbResp } = await http.get('https://api.cafci.org.ar/pb', {
-          params: { fondoId: f.id, claseId, limit: 2, _sort: 'fecha:desc' },
-          timeout: 8000,
-        });
+    // Para cada fondo calcular TNA con los dos últimos días
+    const resultados = [];
+    for (const key of Object.keys(porFondo)) {
+      const dias = porFondo[key].sort((a, b) => b.fecha.localeCompare(a.fecha));
+      if (dias.length < 2) continue;
 
-        const vals = pbResp.data || [];
-        if (vals.length < 2) return null;
+      const vcpHoy  = parseFloat(dias[0].vcp);
+      const vcpAyer = parseFloat(dias[1].vcp);
+      if (!vcpHoy || !vcpAyer || vcpAyer === 0) continue;
 
-        const vcpHoy  = parseFloat(vals[0].valor);
-        const vcpAyer = parseFloat(vals[1].valor);
-        if (!vcpHoy || !vcpAyer || vcpAyer === 0) return null;
+      const rendDiario = (vcpHoy / vcpAyer) - 1;
+      const tna = parseFloat((rendDiario * 365 * 100).toFixed(2));
+      if (tna <= 0 || tna > 200) continue;
 
-        const rendDiario = (vcpHoy / vcpAyer) - 1;
-        const tna = parseFloat((rendDiario * 365 * 100).toFixed(2));
-        if (tna <= 0 || tna > 200) return null;
+      // Solo fondos money market / liquidez (horizonte corto)
+      const horizonte = (dias[0].horizonte || '').toLowerCase();
+      if (!horizonte.includes('liquidez') && !horizonte.includes('money') && !horizonte.includes('corto')) continue;
 
-        return {
-          id:      f.id,
-          nombre:  f.gerente?.nombre || f.nombre || 'Fondo',
-          subtipo: f.clase?.nombre   || 'FCI',
-          tipo:    'fci',
-          tna,
-          tea:     parseFloat(((Math.pow(1 + rendDiario, 365) - 1) * 100).toFixed(2)),
-          min:     '$100',
-          logo:    initials(f.gerente?.nombre || f.nombre || ''),
-          fechaRef: vals[0].fecha,
-        };
-      })
-    );
+      resultados.push({
+        nombre:  dias[0].fondo || 'Fondo',
+        subtipo: dias[0].horizonte || 'FCI Liquidez',
+        tipo:    'fci',
+        tna,
+        tea:     parseFloat(((Math.pow(1 + rendDiario, 365) - 1) * 100).toFixed(2)),
+        min:     '$100',
+        logo:    initials(dias[0].fondo || ''),
+        fechaRef: dias[0].fecha,
+      });
+    }
 
-    const data = resultados
-      .filter(r => r.status === 'fulfilled' && r.value)
-      .map(r => r.value)
-      .sort((a, b) => b.tna - a.tna);
+    if (!resultados.length) throw new Error('Sin fondos de liquidez en respuesta');
 
-    if (!data.length) throw new Error('Sin rendimientos válidos');
-
+    const data = resultados.sort((a, b) => b.tna - a.tna);
     cache.set(KEY, data, TTL.billeteras);
     res.json({ source: 'api', data, fetchedAt: new Date().toISOString() });
 
@@ -129,7 +128,7 @@ app.get('/api/billeteras', async (_req, res) => {
   }
 });
 
-// PLAZO FIJO: BCRA v3.0, variable 25
+/* ── PLAZO FIJO (BCRA v3) ─────────────────────── */
 app.get('/api/plazo', async (_req, res) => {
   const KEY = 'plazo';
   const hit = cache.get(KEY);
@@ -177,7 +176,7 @@ app.get('/api/plazo', async (_req, res) => {
   }
 });
 
-// BADLAR: BCRA v3.0, variable 34
+/* ── BADLAR (BCRA v3) ─────────────────────────── */
 app.get('/api/badlar', async (_req, res) => {
   const KEY = 'badlar';
   const hit = cache.get(KEY);
@@ -187,16 +186,12 @@ app.get('/api/badlar', async (_req, res) => {
     const { data } = await http.get(
       `https://api.bcra.gob.ar/estadisticas/v3.0/datosvariable/34/${daysAgo(10)}/${today()}`
     );
-
     const resultados = data.results || [];
     if (!resultados.length) throw new Error('Sin datos BADLAR');
-
     const ultimo    = resultados[resultados.length - 1];
     const resultado = { tna: parseFloat(ultimo.valor), fecha: ultimo.fecha };
-
     cache.set(KEY, resultado, TTL.badlar);
     res.json({ source: 'api', ...resultado, fetchedAt: new Date().toISOString() });
-
   } catch (err) {
     console.error('[/api/badlar]', err.message);
     res.status(502).json({ error: 'No se pudo obtener BADLAR', detail: err.message });
@@ -219,5 +214,6 @@ app.use((err, _req, res, _next) => {
 
 app.listen(PORT, () => {
   console.log('\n🚀 CuantoRinde Backend en http://localhost:' + PORT);
-  console.log('   BCRA v3.0 ✅  |  CAFCI /pb + browser headers ✅\n');
+  console.log('   CAFCI: /estadisticas/informacion/diaria (sin auth) ✅');
+  console.log('   BCRA:  v3.0 ✅\n');
 });
