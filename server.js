@@ -4,7 +4,7 @@ const cors       = require('cors');
 const axios      = require('axios');
 const NodeCache  = require('node-cache');
 const rateLimit  = require('express-rate-limit');
-});
+
 /* ─────────────────────────────────────────────────────────────
    CONFIG
    ───────────────────────────────────────────────────────────── */
