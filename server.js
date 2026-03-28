@@ -49,6 +49,8 @@ app.get('/api/health', (_,res) => res.json({ status:'ok', uptime:Math.floor(proc
    Última actualización: marzo 2026
    ───────────────────────────────────────────────────────────────── */
 const BILLETERAS = [
+  { nombre:'Carrefour Banco', subtipo:'Cuenta Digital',     tipo:'billetera', tna:26.0, logo:'CF', min:'Sin mínimo' },
+  { nombre:'Banco Bica',      subtipo:'Cuenta Remunerada',  tipo:'billetera', tna:28.0, logo:'BC', min:'Sin mínimo' },
   { nombre:'Naranja X',       subtipo:'Frascos Fijos',      tipo:'billetera', tna:25.0, logo:'NX', min:'Sin mínimo' },
   { nombre:'Ualá',            subtipo:'Alpha Ahorro',       tipo:'billetera', tna:24.0, logo:'UL', min:'Sin mínimo' },
   { nombre:'Cocos Pay',       subtipo:'FCI Cocos Daruma',   tipo:'fci',       tna:23.8, logo:'CO', min:'$100' },
@@ -57,7 +59,7 @@ const BILLETERAS = [
   { nombre:'Prex',            subtipo:'FCI Liquidez',       tipo:'fci',       tna:22.8, logo:'PX', min:'Sin mínimo' },
   { nombre:'Personal Pay',    subtipo:'Cuenta remunerada',  tipo:'billetera', tna:22.5, logo:'PP', min:'Sin mínimo' },
   { nombre:'Cuenta DNI',      subtipo:'Provincia FCI',      tipo:'billetera', tna:22.0, logo:'DN', min:'Sin mínimo' },
-  { nombre:'Mercado Pago',    subtipo:'Mercado Fondo',      tipo:'billetera', tna:21.2, logo:'MP', min:'Sin mínimo' },
+  { nombre:'Mercado Pago',    subtipo:'Mercado Fondo',      tipo:'billetera', tna:21.7, logo:'MP', min:'Sin mínimo' },
   { nombre:'BruBank',         subtipo:'Ahorro BruBank',     tipo:'billetera', tna:21.0, logo:'BR', min:'Sin mínimo' },
   { nombre:'BBVA',            subtipo:'FCI Renta Total',    tipo:'fci',       tna:20.5, logo:'BV', min:'$1.000' },
   { nombre:'Bind',            subtipo:'FCI Money Market',   tipo:'mm',        tna:20.0, logo:'BI', min:'$5.000' },
