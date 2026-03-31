@@ -283,6 +283,22 @@ router.get('/news', async (req, res) => {
     console.error(`[/api/news?category=${category}]`, err.message);
     res.status(502).json({ error: 'No se pudieron obtener noticias', articles: [] });
   }
+
 });
+
+router.get('/debug-stooq', async (req, res) => {
+  const ticker = req.query.t || 'ggal.ba';
+  try {
+    const r = await fetch(`https://stooq.com/q/d/l/?s=${ticker}&i=d`, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+      signal: AbortSignal.timeout(8000),
+    });
+    const text = await r.text();
+    res.send(`<pre>STATUS: ${r.status}\n\nBODY:\n${text.slice(0, 1000)}</pre>`);
+  } catch (err) {
+    res.send(`ERROR: ${err.message}`);
+  }
+});
+```
 
 module.exports = router;
