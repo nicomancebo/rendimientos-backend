@@ -4,6 +4,7 @@ const cors      = require('cors');
 const axios     = require('axios');
 const NodeCache = require('node-cache');
 const rateLimit = require('express-rate-limit');
+const mercadoRoutes = require('./server-mercado');
 
 const PORT    = process.env.PORT || 3001;
 const ORIGINS = (process.env.ALLOWED_ORIGINS || '*').split(',').map(s => s.trim());
@@ -40,6 +41,8 @@ app.use(rateLimit({
 
 /* ── HEALTH ── */
 app.get('/api/health', (_,res) => res.json({ status:'ok', uptime:Math.floor(process.uptime()) }));
+
+app.use('/api', mercadoRoutes);
 
 /* ─────────────────────────────────────────────────────────────────
    BILLETERAS — datos curados manualmente
