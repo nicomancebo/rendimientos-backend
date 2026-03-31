@@ -287,17 +287,21 @@ router.get('/news', async (req, res) => {
 });
 
 router.get('/debug-stooq', async (req, res) => {
-  const ticker = req.query.t || 'ggal.ba';
-  try {
-    const r = await fetch(`https://stooq.com/q/d/l/?s=${ticker}&i=d`, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-      signal: AbortSignal.timeout(8000),
-    });
-    const text = await r.text();
-    res.send(`<pre>STATUS: ${r.status}\n\nBODY:\n${text.slice(0, 1000)}</pre>`);
-  } catch (err) {
-    res.send(`ERROR: ${err.message}`);
+  const formatos = ['ggal.ba', 'ggal.ar', 'ggal', 'GGAL.BA', 'GGAL.AR'];
+  const resultados = {};
+  for (const t of formatos) {
+    try {
+      const r = await fetch(`https://stooq.com/q/d/l/?s=${t}&i=d`, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+        signal: AbortSignal.timeout(6000),
+      });
+      const text = await r.text();
+      resultados[t] = `STATUS:${r.status} | BODY:${text.slice(0, 200) || '(vacío)'}`;
+    } catch (err) {
+      resultados[t] = `ERROR: ${err.message}`;
+    }
   }
+  res.json(resultados);
 });
 
 module.exports = router;
