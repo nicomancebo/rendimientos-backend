@@ -299,6 +299,5 @@ router.get('/debug-stooq', async (req, res) => {
     res.send(`ERROR: ${err.message}`);
   }
 });
-```
 
 module.exports = router;
