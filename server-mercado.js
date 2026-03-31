@@ -1,6 +1,6 @@
 /**
  * MercadoHoy — Rutas de mercado
- * Sin dependencias externas para cotizaciones — usa fetch directo a Yahoo Finance.
+ * Cotizaciones via stooq.com (gratuito, sin API key, sin bloqueos de cloud IPs)
  *
  * En tu server.js agregá:
  *   const mercadoRoutes = require('./server-mercado');
@@ -12,84 +12,104 @@ const router    = express.Router();
 const Parser    = require('rss-parser');
 const rssParser = new Parser({ timeout: 8000 });
 
-// ─── Tickers por mercado ──────────────────────────────────────────
+// ─── Tickers por mercado (formato stooq) ─────────────────────────
+// stooq usa lowercase y sufijos propios: .ba (Buenos Aires), .us (NYSE/Nasdaq)
+// índices con ^, commodities con .f
 const TICKERS = {
   ar: [
-    { ticker: 'GGAL.BA',  name: 'Grupo Galicia',     market: 'AR' },
-    { ticker: 'YPF.BA',   name: 'YPF',               market: 'AR' },
-    { ticker: 'PAMP.BA',  name: 'Pampa Energía',     market: 'AR' },
-    { ticker: 'BMA.BA',   name: 'Banco Macro',       market: 'AR' },
-    { ticker: 'TXAR.BA',  name: 'Ternium Argentina', market: 'AR' },
-    { ticker: 'ALUA.BA',  name: 'Aluar',             market: 'AR' },
-    { ticker: 'TECO2.BA', name: 'Telecom Argentina', market: 'AR' },
-    { ticker: 'SUPV.BA',  name: 'Supervielle',       market: 'AR' },
-    { ticker: 'LOMA.BA',  name: 'Loma Negra',        market: 'AR' },
-    { ticker: 'BBAR.BA',  name: 'BBVA Argentina',    market: 'AR' },
+    { ticker: 'ggal.ba',  name: 'Grupo Galicia',     market: 'AR', display: 'GGAL'  },
+    { ticker: 'ypfd.ba',  name: 'YPF',               market: 'AR', display: 'YPFD'  },
+    { ticker: 'pamp.ba',  name: 'Pampa Energía',     market: 'AR', display: 'PAMP'  },
+    { ticker: 'bma.ba',   name: 'Banco Macro',       market: 'AR', display: 'BMA'   },
+    { ticker: 'txar.ba',  name: 'Ternium Argentina', market: 'AR', display: 'TXAR'  },
+    { ticker: 'alua.ba',  name: 'Aluar',             market: 'AR', display: 'ALUA'  },
+    { ticker: 'teco2.ba', name: 'Telecom Argentina', market: 'AR', display: 'TECO2' },
+    { ticker: 'supv.ba',  name: 'Supervielle',       market: 'AR', display: 'SUPV'  },
+    { ticker: 'loma.ba',  name: 'Loma Negra',        market: 'AR', display: 'LOMA'  },
+    { ticker: 'bbar.ba',  name: 'BBVA Argentina',    market: 'AR', display: 'BBAR'  },
   ],
   us: [
-    { ticker: 'NVDA',  name: 'Nvidia',          market: 'US' },
-    { ticker: 'AAPL',  name: 'Apple',           market: 'US' },
-    { ticker: 'MSFT',  name: 'Microsoft',       market: 'US' },
-    { ticker: 'AMZN',  name: 'Amazon',          market: 'US' },
-    { ticker: 'TSLA',  name: 'Tesla',           market: 'US' },
-    { ticker: 'META',  name: 'Meta Platforms',  market: 'US' },
-    { ticker: 'GOOGL', name: 'Alphabet',        market: 'US' },
-    { ticker: 'JPM',   name: 'JPMorgan Chase',  market: 'US' },
-    { ticker: 'V',     name: 'Visa',            market: 'US' },
-    { ticker: 'BAC',   name: 'Bank of America', market: 'US' },
+    { ticker: 'nvda.us',  name: 'Nvidia',          market: 'US', display: 'NVDA'  },
+    { ticker: 'aapl.us',  name: 'Apple',           market: 'US', display: 'AAPL'  },
+    { ticker: 'msft.us',  name: 'Microsoft',       market: 'US', display: 'MSFT'  },
+    { ticker: 'amzn.us',  name: 'Amazon',          market: 'US', display: 'AMZN'  },
+    { ticker: 'tsla.us',  name: 'Tesla',           market: 'US', display: 'TSLA'  },
+    { ticker: 'meta.us',  name: 'Meta Platforms',  market: 'US', display: 'META'  },
+    { ticker: 'googl.us', name: 'Alphabet',        market: 'US', display: 'GOOGL' },
+    { ticker: 'jpm.us',   name: 'JPMorgan Chase',  market: 'US', display: 'JPM'   },
+    { ticker: 'v.us',     name: 'Visa',            market: 'US', display: 'V'     },
+    { ticker: 'bac.us',   name: 'Bank of America', market: 'US', display: 'BAC'   },
   ],
   global: [
-    { ticker: '%5EGSPC',   name: 'S&P 500',     market: 'GL' },
-    { ticker: '%5EIXIC',   name: 'Nasdaq',       market: 'GL' },
-    { ticker: '%5EDJI',    name: 'Dow Jones',    market: 'GL' },
-    { ticker: '%5EFTSE',   name: 'FTSE 100',     market: 'GL' },
-    { ticker: '%5EGDAXI',  name: 'DAX',          market: 'GL' },
-    { ticker: '%5EN225',   name: 'Nikkei 225',   market: 'GL' },
-    { ticker: 'GC%3DF',    name: 'Oro',          market: 'GL' },
-    { ticker: 'CL%3DF',    name: 'Petróleo WTI', market: 'GL' },
-    { ticker: 'BTC-USD',   name: 'Bitcoin',      market: 'GL' },
-    { ticker: 'ZS%3DF',    name: 'Soja',         market: 'GL' },
+    { ticker: '^spx',    name: 'S&P 500',      market: 'GL', display: 'SPX'  },
+    { ticker: '^ndq',    name: 'Nasdaq 100',   market: 'GL', display: 'NDQ'  },
+    { ticker: '^dji',    name: 'Dow Jones',    market: 'GL', display: 'DJI'  },
+    { ticker: '^ftse',   name: 'FTSE 100',     market: 'GL', display: 'FTSE' },
+    { ticker: '^dax',    name: 'DAX',          market: 'GL', display: 'DAX'  },
+    { ticker: '^n225',   name: 'Nikkei 225',   market: 'GL', display: 'N225' },
+    { ticker: 'xauusd',  name: 'Oro (USD/oz)', market: 'GL', display: 'GOLD' },
+    { ticker: 'cl.f',    name: 'Petróleo WTI', market: 'GL', display: 'WTI'  },
+    { ticker: 'btcusd',  name: 'Bitcoin',      market: 'GL', display: 'BTC'  },
+    { ticker: 'zs.f',    name: 'Soja',         market: 'GL', display: 'SOJA' },
   ],
 };
 
-// ─── Fetch de cotizaciones via Yahoo Finance v7 API (sin paquete npm) ───
-const fetchYahooQuotes = async (symbols) => {
-  // Yahoo Finance v7 acepta hasta ~10 símbolos separados por coma
-  const joined = symbols.join(',');
-  const url    = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${joined}&fields=regularMarketPrice,regularMarketChangePercent,regularMarketVolume`;
-
+// ─── Fetch de stooq (CSV con historial diario) ────────────────────
+// Devuelve las últimas N filas: Date,Open,High,Low,Close,Volume
+const fetchStooqOne = async (ticker) => {
+  const url = `https://stooq.com/q/d/l/?s=${ticker}&i=d`;
   const res = await fetch(url, {
     headers: {
-      'User-Agent': 'Mozilla/5.0 (compatible; MercadoHoy/1.0)',
-      'Accept': 'application/json',
-      'Accept-Language': 'es-AR,es;q=0.9',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     },
-    signal: AbortSignal.timeout(10000),
+    signal: AbortSignal.timeout(8000),
   });
+  if (!res.ok) throw new Error(`stooq HTTP ${res.status} for ${ticker}`);
 
-  if (!res.ok) throw new Error(`Yahoo Finance HTTP ${res.status}`);
-  const data = await res.json();
-  return data?.quoteResponse?.result || [];
+  const text  = await res.text();
+  const lines = text.trim().split('\n').filter(l => l && !l.startsWith('Date'));
+
+  if (lines.length < 2) return null; // sin datos suficientes
+
+  const parseRow = (line) => {
+    const cols = line.split(',');
+    return {
+      close:  parseFloat(cols[4]),
+      volume: parseFloat(cols[5]) || 0,
+    };
+  };
+
+  const today     = parseRow(lines[lines.length - 1]);
+  const yesterday = parseRow(lines[lines.length - 2]);
+
+  if (isNaN(today.close)) return null;
+
+  const changePct = yesterday.close
+    ? ((today.close - yesterday.close) / yesterday.close) * 100
+    : 0;
+
+  return { close: today.close, changePct, volume: today.volume };
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────
+// ─── Formateo ─────────────────────────────────────────────────────
 const fmtPrice = (price, market) => {
-  if (price == null) return '—';
+  if (price == null || isNaN(price)) return '—';
   if (market === 'AR') {
     return `$${price.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`;
+  }
+  if (price >= 1000) {
+    return price.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
   }
   return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
 const fmtVol = (vol) => {
-  if (!vol) return '';
+  if (!vol || isNaN(vol)) return '';
   if (vol >= 1_000_000) return `${(vol / 1_000_000).toFixed(1)}M`;
   if (vol >= 1_000)     return `${(vol / 1_000).toFixed(0)}K`;
-  return String(vol);
+  return String(Math.round(vol));
 };
-
-const cleanTicker = (t) =>
-  t.replace('.BA', '').replace('%5E', '').replace('%3DF', '').replace('-USD', '').replace('BTC', 'BTC');
 
 // ─── Cache en memoria ─────────────────────────────────────────────
 const cache = {};
@@ -180,7 +200,9 @@ router.get('/fx', async (req, res) => {
 // GET /api/quotes?market=ar|us|global
 router.get('/quotes', async (req, res) => {
   const market = (req.query.market || 'ar').toLowerCase();
-  if (!TICKERS[market]) return res.status(400).json({ error: 'market inválido. Usá: ar, us, global' });
+  if (!TICKERS[market]) {
+    return res.status(400).json({ error: 'market inválido. Usá: ar, us, global' });
+  }
 
   const cacheKey = `quotes_${market}`;
   const cached   = getCache(cacheKey, 'quotes');
@@ -188,31 +210,36 @@ router.get('/quotes', async (req, res) => {
 
   try {
     const tickerList = TICKERS[market];
-    const symbols    = tickerList.map(t => t.ticker);
-    const yahooData  = await fetchYahooQuotes(symbols);
 
-    // Mapear resultados de Yahoo por símbolo
-    const bySymbol = {};
-    yahooData.forEach(q => { bySymbol[q.symbol] = q; });
+    // Fetch en paralelo — stooq tolera bien las solicitudes simultáneas
+    const results = await Promise.allSettled(
+      tickerList.map(meta => fetchStooqOne(meta.ticker))
+    );
 
-    const assets = tickerList.map(meta => {
-      // Yahoo devuelve el símbolo decodificado (^GSPC, GC=F, etc.)
-      const decodedTicker = decodeURIComponent(meta.ticker);
-      const q = bySymbol[decodedTicker] || bySymbol[meta.ticker];
-      const clean = cleanTicker(meta.ticker);
+    const assets = results.map((result, i) => {
+      const meta = tickerList[i];
 
-      if (!q) {
-        return { ticker: clean, name: meta.name, price: '—', change: '0.00%', changePositive: false, volume: '', market: meta.market };
+      if (result.status === 'rejected' || !result.value) {
+        console.warn(`[stooq] sin datos para ${meta.ticker}:`, result.reason?.message || 'null');
+        return {
+          ticker:         meta.display,
+          name:           meta.name,
+          price:          '—',
+          change:         '0.00%',
+          changePositive: false,
+          volume:         '',
+          market:         meta.market,
+        };
       }
 
-      const pct = q.regularMarketChangePercent ?? 0;
+      const { close, changePct, volume } = result.value;
       return {
-        ticker:         clean,
+        ticker:         meta.display,
         name:           meta.name,
-        price:          fmtPrice(q.regularMarketPrice, meta.market),
-        change:         `${Math.abs(pct).toFixed(2)}%`,
-        changePositive: pct >= 0,
-        volume:         fmtVol(q.regularMarketVolume),
+        price:          fmtPrice(close, meta.market),
+        change:         `${Math.abs(changePct).toFixed(2)}%`,
+        changePositive: changePct >= 0,
+        volume:         fmtVol(volume),
         market:         meta.market,
       };
     });
